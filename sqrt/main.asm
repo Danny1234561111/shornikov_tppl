@@ -3,26 +3,39 @@
     push rbx
     push rcx
     push rdx
+    push rsi
+    push rdi
+    push rbp
 %endmacro
 
 %macro restore_regs 0
+    pop rbp
+    pop rdi
+    pop rsi
     pop rdx
     pop rcx
     pop rbx
     pop rax
 %endmacro
 
-%macro output 2
-    save_regs
-    mov rax, 1          ; номер системного вызова для вывода
-    mov rdi, 1          ; дескриптор stdout
-    mov rsi, %1         ; указатель на данные
-    mov rdx, %2         ; длина данных
+%macro syscall1 1
+    mov rax, %1
     syscall
-    restore_regs
 %endmacro
 
-%macro print_decimal 0
+%macro mov_dword 2
+    mov dword [%1], %2
+%endmacro
+
+%macro print_string 1
+    mov rax, 1
+    mov rdi, 1
+    mov rsi, %1
+    mov rdx, %1_len
+    syscall
+%endmacro
+
+%macro print_decimal_macro 0
     save_regs
     mov rbx, 0          ; счетчик цифр
     mov rcx, 10         ; делитель для десятичной системы
@@ -31,87 +44,73 @@ divide_loop:
     div rcx
     push rdx
     inc rbx
-    cmp rax, 0
+    cmp eax, 0
     jne divide_loop
 
 print_loop:
     pop rax
-    add rax, '0'        ; преобразование в символ
+    add al, '0'        ; преобразование в символ
     mov [output_buffer], al
-    output output_buffer, 1
+    ; Вывод символа :
+    mov rax, 1
+    mov rdi, 1
+    mov rsi, output_buffer
+    mov rdx, 1
+    syscall
     dec rbx
     cmp rbx, 0
     jg print_loop
     restore_regs
 %endmacro
 
+section .data
+    input_num dd 144
+    result   dq 0
+    result_msg db "Result: ", 0
+    result_msg_len equ $ - result_msg
+
 section .text
-global _start
+    global _start
 
 _start:
+    ; Инициализация
     mov eax, dword [input_num]
-    mov dword [first_num], eax
-    mov dword [first_den], 2
+    mov ebx, eax
+    shr ebx, 1
 
-calculate:
-    xor rax, rax
-    mov eax, dword [input_num]
-    mul dword [first_den]
-    mul dword [first_den]
-    mov dword [second_num], eax
+.loop:
+    ; x2 = (x1 + (num / x1)) // 2
+    mov ecx, dword [input_num]
+    mov eax, ecx
+    mov edx, 0
+    mov esi, ebx
+    div esi
+    add eax, ebx
+    shr eax, 1
+    mov edi, eax
 
-    mov eax, dword [first_num]
-    mul dword [first_num]
-    add dword [second_num], eax
+    ; Сравниваем x1 и x2
+    sub ebx, edi
+    cmp ebx, 1
+    jl .done
+    mov ebx, edi
+    jmp .loop
 
-    mov eax, dword [first_num]
-    mul dword [first_den]
-    mov rcx, 2
-    mul rcx
-    mov dword [second_den], eax
+.done:
+    mov_dword result, edi
+    mov eax, edi
+    print_decimal_macro
 
-    mov eax, dword [second_num]
-    div dword [second_den]
-    mov dword [second_num], eax
-    mov dword [second_den], 1
+    print_string result_msg
+    mov rax, 1               ; syscall write
+    mov rdi, 1               ; stdout
+    mov rsi, output_buffer
+    mov rdx, 1               ; длина 1 байт
+    syscall
 
-check_condition:
-    mov eax, dword [second_num]
-    mul dword [first_den]
-    mov edx, eax
-    mov eax, dword [first_num]
-    sub eax, edx
-    cmp eax, dword [first_den]
-    jl finish
-
-update_values:
-    mov edx, dword [second_num]
-    mov [first_num], edx
-    mov edx, dword [second_den]
-    mov [first_den], edx
-    jmp calculate
-
-finish:
-    mov eax, dword [second_num]
-    print_decimal
-    output newline_char, newline_length
-    output completion_msg, msg_length
-    output newline_char, newline_length
-    mov rax, 60         ; системный вызов для выхода
+    syscall1 60
     xor rdi, rdi
     syscall
 
-section .data
-input_num dd 256
-
-completion_msg db 'Completed', 0xA, 0xD
-msg_length equ $ - completion_msg
-newline_char db 0xA, 0xD
-newline_length equ $ - newline_char
-
 section .bss
-output_buffer resb 1
-first_num resd 1
-first_den resd 1
-second_num resd 1
-second_den resd 1
+    output_buffer resb 1
