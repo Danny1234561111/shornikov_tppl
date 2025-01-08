@@ -98,10 +98,12 @@ class Parser():
             return Empty()
 
         result = Empty()
-
+        compound_stack=[]
         while self._current_token:
             if self._current_token.value == 'BEGIN':
-                result = StatementList(result, self.__compound_statement())
+                compound_stack.append(result)
+                result = self.__compound_statement()  # Рекурсивный вызов
+                result = StatementList(compound_stack.pop(), Statement(result))
             else:
                 result = StatementList(result, Statement(self.__assignment()))
 
@@ -115,7 +117,6 @@ class Parser():
                 raise SyntaxError('Missed SEMI sign')
 
             self._current_token = self._lexer.next()
-
 
     def __program(self):
         self._current_token = self._lexer.next()
