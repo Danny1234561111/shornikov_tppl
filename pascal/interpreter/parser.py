@@ -2,7 +2,6 @@ from .token import TokenType
 from .lexer import Lexer
 from .ast import BinOp, Number, UnaryOp, Variable, Assignment, Statement, StatementList, \
     ComplexStatement, Program, Empty, CompoundStatement
-
 class Parser():
     def __init__(self) -> None:
         self._lexer = Lexer()
@@ -98,25 +97,20 @@ class Parser():
             return Empty()
 
         result = Empty()
-        compound_stack=[]
         while self._current_token:
             if self._current_token.value == 'BEGIN':
-                compound_stack.append(result)
-                result = self.__compound_statement()  # Рекурсивный вызов
-                result = StatementList(compound_stack.pop(), Statement(result))
-            else:
+                result = StatementList(result, Statement(self.__compound_statement()))
+            elif self._current_token.type_ == TokenType.ID:
                 result = StatementList(result, Statement(self.__assignment()))
 
-            if self._current_token is not None and not (self._current_token.value == ';'):
-                if self._current_token.value == 'END':
-                    self._current_token = self._lexer.next()
-
-                    if self._current_token is not None and self._current_token.value == ';':
-                        return CompoundStatement(result)
-
+            if self._current_token is not None and self._current_token.value != 'END' and self._current_token.value != ';':
                 raise SyntaxError('Missed SEMI sign')
+            if self._current_token is not None and self._current_token.value == ';':
+                self._current_token = self._lexer.next()
+            if self._current_token is not None and self._current_token.value == 'END':
+                break
 
-            self._current_token = self._lexer.next()
+        return CompoundStatement(result)
 
     def __program(self):
         self._current_token = self._lexer.next()
@@ -129,18 +123,23 @@ class Parser():
 
                 if self._current_token is not None and self._current_token.value == '.':
                     return Program(ComplexStatement(result))
-
+            if self._current_token is None:
                 raise SyntaxError('Missed DOT sign')
-
             if self._current_token.value == 'BEGIN':
                 result = StatementList(result, Statement(self.__compound_statement()))
-            else:
+            elif self._current_token.type_ == TokenType.ID:
                 result = StatementList(result, Statement(self.__assignment()))
 
             if self._current_token is not None and not (self._current_token.value == ';'):
-                raise SyntaxError('Missed SEMI sign')
+                if self._current_token.value != 'END':
+                    raise SyntaxError('Missed SEMI sign')
 
             self._current_token = self._lexer.next()
+
+        if self._current_token is None or self._current_token.value != '.':
+            raise SyntaxError('Missed DOT sign')
+
+        return Program(ComplexStatement(result))
 
 
     def eval(self, s: str) -> StatementList | BinOp | Statement | ComplexStatement | UnaryOp:
@@ -153,4 +152,3 @@ class Parser():
             return self.__statement_list_without_begins()
         else:
             return self.__expr()
-

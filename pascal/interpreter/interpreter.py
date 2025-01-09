@@ -98,7 +98,6 @@ class Interpreter(NodeVisitor):
         self.answer_variables = [{}]
 
         tree = self._parser.eval(code)
-
         self.visit(tree)
 
         self.answer_variables[0] = self.variables[0]
